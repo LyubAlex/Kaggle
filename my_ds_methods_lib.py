@@ -18,9 +18,10 @@ from skopt.callbacks import DeltaXStopper, DeadlineStopper, DeltaYStopper
 from skopt.callbacks import EarlyStopper
 
 def get_params_SKopt(model, X, Y, space):
+#     cv_search = ShuffleSplit(n_splits = 1, test_size = 0.3, random_state = 0)
     cv_search = KFold(n_splits=3, shuffle=True, random_state = 0)
     
-    HPO_PARAMS = {'n_calls':500,
+    HPO_PARAMS = {'n_calls':1000,
                   'n_random_starts':10,
                   'acq_func':'EI',}
 
@@ -36,19 +37,16 @@ def get_params_SKopt(model, X, Y, space):
     reg_gp = gbrt_minimize(objective, 
                            space, 
                            verbose = False,
-                           callback = [RepeatedMinStopper(n_best = 30), DeadlineStopper(total_time = 7200)],
+#                            callback = [DeltaYStopper(delta = 0.01, n_best = 5), DeadlineStopper(total_time = 7200)],
+                           callback = [RepeatedMinStopper(n_best = 50), DeadlineStopper(total_time = 7200)],
                            **HPO_PARAMS,
                            random_state = 0)
-
-    model.max_depth = reg_gp.x[0]
-    model.min_child_weight = reg_gp.x[1]
-    model.learning_rate = reg_gp.x[2]
-    model.subsample = reg_gp.x[3]
-    model.colsample_bytree = reg_gp.x[4]
-    model.reg_alpha = reg_gp.x[5]
-    model.reg_lambda = reg_gp.x[6]
-
-    return [model,reg_gp]
+    
+    TUNED_PARAMS = {}
+    for i, item in enumerate(space):
+        TUNED_PARAMS[item.name] = reg_gp.x[i]
+    
+    return [TUNED_PARAMS,reg_gp]
 
 class RepeatedMinStopper(EarlyStopper):
     """Stop the optimization when there is no improvement in the minimum.
