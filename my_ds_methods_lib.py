@@ -9,18 +9,20 @@ from sklearn.model_selection import KFold
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from tqdm import tqdm_notebook as tqdm
+
+import seaborn as sns
+from mpl_toolkits.mplot3d import Axes3D
+
 # HPO
 from skopt.space import Integer, Categorical, Real
 from skopt.utils import use_named_args
-from skopt import gp_minimize, gbrt_minimize
+from skopt import gp_minimize, gbrt_minimize, forest_minimize
 from skopt.plots import plot_convergence
 from skopt.callbacks import DeltaXStopper, DeadlineStopper, DeltaYStopper
 from skopt.callbacks import EarlyStopper
 
-def get_params_SKopt(model, X, Y, space):
-#     cv_search = ShuffleSplit(n_splits = 1, test_size = 0.3, random_state = 0)
-    cv_search = KFold(n_splits=3, shuffle=True, random_state = 0)
-    
+def get_params_SKopt(model, X, Y, space, cv_search, opt_method = 'gbrt_minimize', verbose = True,  multi = False, scoring = 'neg_mean_squared_error', n_best = 50, total_time = 7200):
+   
     HPO_PARAMS = {'n_calls':1000,
                   'n_random_starts':10,
                   'acq_func':'EI',}
@@ -32,19 +34,53 @@ def get_params_SKopt(model, X, Y, space):
                                         X, Y, 
                                         cv=cv_search, 
                                         n_jobs = -1, 
-                                        scoring='neg_mean_absolute_error'))
+                                        scoring= scoring))
+#   callback = [DeltaYStopper(delta = 0.01, n_best = 5), DeadlineStopper(total_time = 7200)],
+    if opt_method == 'gbrt_minimize':
+        
+        HPO_PARAMS = {'n_calls':1000,
+                      'n_random_starts':10,
+                      'acq_func':'EI',}
+        
+        reg_gp = gbrt_minimize(objective, 
+                               space, 
+                               verbose = verbose,
+                               callback = [RepeatedMinStopper(n_best = n_best), DeadlineStopper(total_time = total_time)],
+                               **HPO_PARAMS,
+                               random_state = 0)
+        
+    elif opt_method == 'forest_minimize':
+        
+        HPO_PARAMS = {'n_calls':1000,
+                      'n_random_starts':10,
+                      'acq_func':'EI',}
+        
+        reg_gp = forest_minimize(objective, 
+                               space, 
+                               verbose = verbose,
+                               callback = [RepeatedMinStopper(n_best = n_best), DeadlineStopper(total_time = total_time)],
+                               **HPO_PARAMS,
+                               random_state = 0)
+        
+    elif opt_method == 'gp_minimize':
+        
+        HPO_PARAMS = {'n_calls':1000,
+                      'n_random_starts':10,
+                      'acq_func':'gp_hedge',}        
+        
+        reg_gp = gp_minimize(objective, 
+                               space, 
+                               verbose = verbose,
+                               callback = [RepeatedMinStopper(n_best = n_best), DeadlineStopper(total_time = total_time)],
+                               **HPO_PARAMS,
+                               random_state = 0)
     
-    reg_gp = gbrt_minimize(objective, 
-                           space, 
-                           verbose = False,
-#                            callback = [DeltaYStopper(delta = 0.01, n_best = 5), DeadlineStopper(total_time = 7200)],
-                           callback = [RepeatedMinStopper(n_best = 50), DeadlineStopper(total_time = 7200)],
-                           **HPO_PARAMS,
-                           random_state = 0)
-    
-    TUNED_PARAMS = {}
+    TUNED_PARAMS = {} 
     for i, item in enumerate(space):
-        TUNED_PARAMS[item.name] = reg_gp.x[i]
+        if multi:
+            TUNED_PARAMS[item.name.split('__')[1]] = reg_gp.x[i]
+        else:
+            TUNED_PARAMS[item.name] = reg_gp.x[i]
     
     return [TUNED_PARAMS,reg_gp]
 
@@ -70,6 +106,24 @@ class RepeatedMinStopper(EarlyStopper):
 
         return self.count >= self.n_best
 
+def plotCorrelationMatrix(df, graphWidth):
+    df = df.dropna('columns') # drop columns with NaN
+    df = df[[col for col in df if df[col].nunique() > 1]] # keep columns where there are more than 1 unique values
+#     print('%.0f features of the dataset are considered' % df.shape[1])
+    if df.shape[1] < 2:
+        print(f'No correlation plots shown: The number of non-NaN or constant columns ({df.shape[1]}) is less than 2')
+        return
+    corr = df.corr()
+    plt.figure(num=None, figsize=(graphWidth, graphWidth), dpi=80, facecolor='w', edgecolor='k')
+    
+    fmt = lambda x,pos: '{:.0%}'.format(x)
+    sns.heatmap(corr, square=True, annot=True, cmap='RdYlGn', annot_kws={"size": 10}, fmt='.1f')
+    
+    plt.xticks(range(len(corr.columns)), corr.columns, rotation=90)
+    plt.yticks(range(len(corr.columns)), corr.columns)
+    plt.gca().xaxis.tick_bottom()
+    plt.show()
+    
 def simple_FS(threshold, train, test):
     corr_matrix = train.corr().abs()
     upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(np.bool))
