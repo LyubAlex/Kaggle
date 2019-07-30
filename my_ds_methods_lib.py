@@ -141,6 +141,46 @@ def get_nan_col(df, N):
     lst_proc = [allnull.loc[i,'index'] for i in range(len(allnull)) if allnull.loc[i,0] < n_observ and allnull.loc[i,0] > 0]
     return [lst_del, lst_proc]
 
+def drop_outliers(mas, use_method = 'Z'):
+    res_idx = []
+        
+    fig, ax = plt.subplots(1, 2, figsize=(15,5))
+
+    z = np.abs(stats.zscore(mas))
+    idx_out = [i for i, z_score in enumerate(z) if z_score >= 3]
+    idx_rest = [i for i, z_score in enumerate(z) if z_score < 3]
+    
+    if use_method == 'Z':
+        res_idx = idx_rest
+    
+    ax[0].scatter(idx_rest, mas[idx_rest], linewidths = 0.1)
+    ax[0].scatter(idx_out, mas[idx_out], c='r', marker ='*', linewidths = 2)
+    ax[0].set_title('Z-score')
+    ax[0].set_xlabel('Number of values')
+    ax[0].set_ylabel('Value')
+    ax[0].grid(True)
+    
+    Q1, Q3= np.percentile(mas,[25,75])
+    IQR = Q3 - Q1
+    lower_bound = Q1 -(1.5 * IQR) 
+    upper_bound = Q3 +(1.5 * IQR)
+    
+    idx_out = [i for i, mas_i in enumerate(mas) if (mas_i > upper_bound or mas_i < lower_bound)]
+    idx_rest = [i for i, mas_i in enumerate(mas) if (mas_i <= upper_bound and mas_i >= lower_bound)]
+    
+    if use_method == 'IQR':
+        res_idx = idx_rest
+        
+    ax[1].scatter(idx_rest, mas[idx_rest], linewidths = 0.1)
+    ax[1].scatter(idx_out, mas[idx_out], c='r', marker ='*', linewidths = 2)
+    ax[1].set_title('IQR-score')
+    ax[1].set_xlabel('Number of values')
+    ax[1].set_ylabel('Value')
+    ax[1].grid(True)
+    plt.show()
+    
+    return res_idx
+
 def smart_fillna (common_df, Y, percent , fill_method_all, model_type, cv, scoring):   
     X = pd.DataFrame()
     X_test = pd.DataFrame()
