@@ -22,10 +22,7 @@ from skopt.callbacks import DeltaXStopper, DeadlineStopper, DeltaYStopper
 from skopt.callbacks import EarlyStopper
 
 def get_params_SKopt(model, X, Y, space, cv_search, opt_method = 'gbrt_minimize', verbose = True,  multi = False, scoring = 'neg_mean_squared_error', n_best = 50, total_time = 7200):
-   
-    HPO_PARAMS = {'n_calls':1000,
-                  'n_random_starts':10,
-                  'acq_func':'EI',}
+#   callback = [DeltaYStopper(delta = 0.01, n_best = 5), DeadlineStopper(total_time = 7200)],
 
     @use_named_args(space)
     def objective(**params):
@@ -33,47 +30,49 @@ def get_params_SKopt(model, X, Y, space, cv_search, opt_method = 'gbrt_minimize'
         return -np.mean(cross_val_score(model, 
                                         X, Y, 
                                         cv=cv_search, 
-                                        n_jobs = -1, 
                                         scoring= scoring))
-#   callback = [DeltaYStopper(delta = 0.01, n_best = 5), DeadlineStopper(total_time = 7200)],
+    random_state = 0
     if opt_method == 'gbrt_minimize':
         
         HPO_PARAMS = {'n_calls':1000,
-                      'n_random_starts':10,
+                      'n_random_starts':15,
                       'acq_func':'EI',}
         
         reg_gp = gbrt_minimize(objective, 
                                space, 
+                               n_jobs = -1,
                                verbose = verbose,
                                callback = [RepeatedMinStopper(n_best = n_best), DeadlineStopper(total_time = total_time)],
                                **HPO_PARAMS,
-                               random_state = 0)
+                               random_state = random_state)
         
     elif opt_method == 'forest_minimize':
         
         HPO_PARAMS = {'n_calls':1000,
-                      'n_random_starts':10,
+                      'n_random_starts':15,
                       'acq_func':'EI',}
         
         reg_gp = forest_minimize(objective, 
                                space, 
+                               n_jobs = -1,
                                verbose = verbose,
                                callback = [RepeatedMinStopper(n_best = n_best), DeadlineStopper(total_time = total_time)],
                                **HPO_PARAMS,
-                               random_state = 0)
+                               random_state = random_state)
         
     elif opt_method == 'gp_minimize':
         
         HPO_PARAMS = {'n_calls':1000,
-                      'n_random_starts':10,
+                      'n_random_starts':15,
                       'acq_func':'gp_hedge',}        
         
         reg_gp = gp_minimize(objective, 
                                space, 
+                               n_jobs = -1,
                                verbose = verbose,
                                callback = [RepeatedMinStopper(n_best = n_best), DeadlineStopper(total_time = total_time)],
                                **HPO_PARAMS,
-                               random_state = 0)
+                               random_state = random_state)
     
     TUNED_PARAMS = {} 
     for i, item in enumerate(space):
