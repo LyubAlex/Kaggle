@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, normalize
 
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import KFold
@@ -20,6 +20,33 @@ from skopt import gp_minimize, gbrt_minimize, forest_minimize
 from skopt.plots import plot_convergence
 from skopt.callbacks import DeltaXStopper, DeadlineStopper, DeltaYStopper
 from skopt.callbacks import EarlyStopper
+
+
+# def get_params_SKopt(model, X, Y, space, cv_search, opt_method = 'gbrt_minimize', verbose = True,  multi = False, scoring = 'neg_mean_squared_error', n_best = 50, total_time = 7200):
+   
+#     from skopt import Optimizer
+#     from sklearn.externals.joblib import Parallel, delayed  
+#     from joblib import Parallel, delayed 
+
+#     @use_named_args(space)
+#     def objective(**params):
+#         model.set_params(**params)
+#         return -np.mean(cross_val_score(model, 
+#                                         X, Y, 
+#                                         cv=cv_search, 
+#                                         scoring= scoring))
+
+#     optimizer = Optimizer( dimensions=space,
+#                            random_state=1,
+#                            base_estimator='gbrt',)
+    
+#     n_points = multiprocessing.cpu_count()-1
+#     x = optimizer.ask(n_points = n_points)  # x is a list of n_points points    
+#     y = Parallel(n_jobs = n_points)(delayed(objective)(v) for v in x)  # evaluate points in parallel
+#     optimizer.tell(x, y)
+    
+#     print(optimizer.Xi)
+#     print(min(optimizer.yi))  # print the best objective found 
 
 def get_params_SKopt(model, X, Y, space, cv_search, opt_method = 'gbrt_minimize', verbose = True,  multi = False, scoring = 'neg_mean_squared_error', n_best = 50, total_time = 7200):
 #   callback = [DeltaYStopper(delta = 0.01, n_best = 5), DeadlineStopper(total_time = 7200)],
@@ -180,6 +207,72 @@ def drop_outliers(mas, use_method = 'Z'):
     plt.show()
     
     return res_idx
+
+def std_norm(train, test, cat_names, func = 'std', common_scaler = True):
+    
+    if func == 'std':
+        if len(cat_names) == 0:
+            names = train.columns
+            scaler = StandardScaler()
+            scaler.fit(train)
+            train = pd.DataFrame(scaler.transform(train), columns = names)  
+        else:
+            col_notcat = [c for c in train.columns if c not in cat_names]
+            scaler = StandardScaler()
+            scaler.fit(train[col_notcat])
+           
+            train_scaled = scaler.transform(train[col_notcat])              
+            old = pd.DataFrame(train[cat_names], columns=cat_names)  
+            new = pd.DataFrame(train_scaled, columns=col_notcat, index = old.index)  
+            train = pd.concat([new, old], axis = 1)
+            
+        
+        if common_scaler:
+            if len(cat_names) == 0:
+                names = test.columns
+                test = pd.DataFrame(scaler.transform(test) , columns = names) 
+            else:        
+                test_scaled = scaler.transform(test[col_notcat])  
+                old = pd.DataFrame(test[cat_names], columns=cat_names)  
+                new = pd.DataFrame(test_scaled, columns=col_notcat, index = old.index)  
+                test = pd.concat([new, old], axis = 1)
+        else:
+            if len(cat_names) == 0:
+                names = test.columns
+                scaler = StandardScaler()
+                scaler.fit(test)
+                test = pd.DataFrame(scaler.transform(test) , columns = names)                
+            else:
+                scaler = StandardScaler()
+                scaler.fit(test[col_notcat]) 
+
+                test_scaled = scaler.transform(test[col_notcat])  
+                old = pd.DataFrame(test[cat_names], columns=cat_names)  
+                new = pd.DataFrame(test_scaled, columns=col_notcat, index = old.index)  
+                test = pd.concat([new, old], axis = 1)
+                
+    elif func == 'norm':      
+        
+        if len(cat_names) == 0:
+            names = train.columns           
+            train = pd.DataFrame(normalize(train), columns = names)  
+            test  = pd.DataFrame(normalize(test),  columns = names)  
+            
+        else:
+            col_notcat = [c for c in train.columns if c not in cat_names]
+
+            train_norm = normalize(train[col_notcat], axis = 0)
+ 
+            old = pd.DataFrame(train[cat_names], columns=cat_names)
+            new = pd.DataFrame(train_norm, columns=col_notcat, index = old.index) 
+            train = pd.concat([new, old], axis = 1)
+            
+            test_norm  = normalize(test[col_notcat],  axis = 0)                    
+            old = pd.DataFrame(test[cat_names], columns=cat_names)
+            new = pd.DataFrame(test_norm, columns=col_notcat, index = old.index) 
+            test = pd.concat([new, old], axis = 1)
+    
+    return [train, test]
 
 def smart_fillna (common_df, Y, percent , fill_method_all, model_type, cv, scoring):   
     X = pd.DataFrame()
