@@ -55,7 +55,8 @@ def get_params_SKopt(model, X, Y, space, cv_search, opt_method = 'gbrt_minimize'
     def objective(**params):
         model.set_params(**params)
         return -np.mean(cross_val_score(model, 
-                                        X, Y, 
+                                        X, Y,
+                                        n_jobs = 1,
                                         cv=cv_search, 
                                         scoring= scoring))
     random_state = 0
@@ -323,19 +324,20 @@ def smart_fillna (common_df, Y, percent , fill_method_all, model_type, cv, scori
                                             cv = cv, 
                                             scoring = scoring))
                 mas_score.append(score)
-
+                
                 if score < best_score:
                     best_score = score 
                     best_method = fill_method
                 del common_df_copy
-
+                
             if best_method == 'mean':
                 common_df[feature].fillna(common_df.mean()[feature], inplace = True)
             elif best_method == 'median': 
                 common_df[feature].fillna(common_df.median()[feature], inplace = True)
             elif best_method == 'interpolation': 
                 common_df[feature].fillna(common_df.interpolate()[feature], inplace = True)
-            
+                if common_df[feature].isnull().values.any():
+                    common_df[feature].fillna(common_df.median()[feature], inplace = True)
             del no_na
             
             print(f'Best score:     {best_score}')
