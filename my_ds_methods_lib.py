@@ -48,36 +48,52 @@ from skopt.callbacks import EarlyStopper
 #     print(optimizer.Xi)
 #     print(min(optimizer.yi))  # print the best objective found 
 
-def get_params_SKopt(model, X, Y, space, cv_search, opt_method = 'gbrt_minimize', verbose = True,  multi = False, scoring = 'neg_mean_squared_error', n_best = 50, total_time = 7200):
-#   callback = [DeltaYStopper(delta = 0.01, n_best = 5), DeadlineStopper(total_time = 7200)],
-
+def get_params_SKopt(model, X, Y, space, cv_search, alg = 'catboost', cat_features = None, eval_dataset = None, UBM = False, opt_method =
+                     'gbrt_minimize', verbose = True,  multi = False, scoring = 'neg_mean_squared_error', n_best = 50, total_time = 7200):
+    """The method performs parameters tuning of an algorithm using scikit-optimize library.
+    Parameters:
+    1.
+    2.
+    3. multi - boolean, is used when a multioutput algorithm is tuned
+    UPDATES:
+    1. In this current version, the support of the catboost algorithms is added
+    """
+    if alg == 'catboost':
+        fitparam = { 'eval_set' : eval_dataset,
+                     'use_best_model' : UBM,
+                     'cat_features' : cat_features,
+                     'early_stopping_rounds': 10 }
+    else:
+        fitparam = {}
+        
     @use_named_args(space)
     def objective(**params):
         model.set_params(**params)
         return -np.mean(cross_val_score(model, 
-                                        X, Y,
-                                        n_jobs = 1,
+                                        X, Y, 
                                         cv=cv_search, 
-                                        scoring= scoring))
-    random_state = 0
+                                        scoring= scoring,
+                                        fit_params=fitparam))
+    
     if opt_method == 'gbrt_minimize':
         
         HPO_PARAMS = {'n_calls':1000,
-                      'n_random_starts':15,
+                      'n_random_starts':20,
                       'acq_func':'EI',}
         
         reg_gp = gbrt_minimize(objective, 
                                space, 
                                n_jobs = -1,
                                verbose = verbose,
-                               callback = [RepeatedMinStopper(n_best = n_best), DeadlineStopper(total_time = total_time)],
+                               callback = [DeltaYStopper(delta = 0.01, n_best = 5), RepeatedMinStopper(n_best = n_best), DeadlineStopper(total_time = total_time)],
                                **HPO_PARAMS,
-                               random_state = random_state)
+                               random_state = RANDOM_STATE)
         
+
     elif opt_method == 'forest_minimize':
         
         HPO_PARAMS = {'n_calls':1000,
-                      'n_random_starts':15,
+                      'n_random_starts':20,
                       'acq_func':'EI',}
         
         reg_gp = forest_minimize(objective, 
@@ -86,12 +102,12 @@ def get_params_SKopt(model, X, Y, space, cv_search, opt_method = 'gbrt_minimize'
                                verbose = verbose,
                                callback = [RepeatedMinStopper(n_best = n_best), DeadlineStopper(total_time = total_time)],
                                **HPO_PARAMS,
-                               random_state = random_state)
+                               random_state = RANDOM_STATE)
         
     elif opt_method == 'gp_minimize':
         
         HPO_PARAMS = {'n_calls':1000,
-                      'n_random_starts':15,
+                      'n_random_starts':20,
                       'acq_func':'gp_hedge',}        
         
         reg_gp = gp_minimize(objective, 
@@ -100,7 +116,7 @@ def get_params_SKopt(model, X, Y, space, cv_search, opt_method = 'gbrt_minimize'
                                verbose = verbose,
                                callback = [RepeatedMinStopper(n_best = n_best), DeadlineStopper(total_time = total_time)],
                                **HPO_PARAMS,
-                               random_state = random_state)
+                               random_state = RANDOM_STATE)
     
     TUNED_PARAMS = {} 
     for i, item in enumerate(space):
@@ -110,7 +126,6 @@ def get_params_SKopt(model, X, Y, space, cv_search, opt_method = 'gbrt_minimize'
             TUNED_PARAMS[item.name] = reg_gp.x[i]
     
     return [TUNED_PARAMS,reg_gp]
-
 class RepeatedMinStopper(EarlyStopper):
     """Stop the optimization when there is no improvement in the minimum.
     Stop the optimization when there is no improvement in the minimum
