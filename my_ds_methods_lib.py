@@ -368,4 +368,28 @@ def smart_fillna (common_df, Y, percent , fill_method_all, model_type, cv, scori
         
     X.drop('train', axis = 1, inplace = True)
     X_test.drop('train', axis = 1, inplace = True)
-    return [X, X_test, Y.reset_index(drop=True), lst_nan[1]]    
+    return [X, X_test, Y.reset_index(drop=True), lst_nan[1]]  
+
+def stat_intervals(stat, alpha):
+    boundaries = np.percentile(stat, [100 * alpha / 2., 100 * (1 - alpha / 2.)])
+    return boundaries
+
+def get_bootstrap_samples(data, n_samples):
+    indices = np.random.randint(0, len(data), (n_samples, len(data)))
+    samples = data[indices]
+    return samples
+
+def bootstrap_fun(data1, data2, num_of_samples = 500, method = 'mean'):
+    np.random.seed(0)
+    data1_mean, data2_mean = np.empty(num_of_samples), np.empty(num_of_samples)
+
+    data1_sample = get_bootstrap_samples(data1, num_of_samples)
+    data2_sample = get_bootstrap_samples(data2, num_of_samples)
+    
+    if method == 'mean':
+        for i in range(num_of_samples):
+            data1_mean[i], data2_mean[i] = data1_sample[i].mean(), data2_sample[i].mean() 
+    elif method == 'median':
+        for i in range(num_of_samples):
+            data1_mean[i], data2_mean[i] = np.median(data1_sample[i]), np.median(data2_sample[i])   
+    return data1_mean, data2_mean
