@@ -1,6 +1,10 @@
 import numpy as np
 import pandas as pd
 
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
 from sklearn.preprocessing import StandardScaler, normalize
 
 from sklearn.model_selection import cross_val_score
@@ -62,7 +66,7 @@ def get_params_SKopt(model, X, Y, space, cv_search, alg = 'catboost', cat_featur
         fitparam = { 'eval_set' : eval_dataset,
                      'use_best_model' : UBM,
                      'cat_features' : cat_features,
-                     'early_stopping_rounds': 10 }
+                     'early_stopping_rounds': 20 }
     else:
         fitparam = {}
         
@@ -126,6 +130,7 @@ def get_params_SKopt(model, X, Y, space, cv_search, alg = 'catboost', cat_featur
             TUNED_PARAMS[item.name] = reg_gp.x[i]
     
     return [TUNED_PARAMS,reg_gp]
+
 class RepeatedMinStopper(EarlyStopper):
     """Stop the optimization when there is no improvement in the minimum.
     Stop the optimization when there is no improvement in the minimum
@@ -166,15 +171,25 @@ def plotCorrelationMatrix(df, graphWidth):
     plt.gca().xaxis.tick_bottom()
     plt.show()
     
-def simple_FS(threshold, train, test):
+def simple_FS(threshold, train, test, verbose = True):
     corr_matrix = train.corr().abs()
     upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(np.bool))
     to_drop = [column for column in upper.columns if any(upper[column] > threshold)]
-    print('\nThere are %d columns to remove.' % (len(to_drop)))
     train = train.drop(columns = to_drop)
     test = test.drop(columns = to_drop)  
-    print (f'After dropping {train.shape[1]}' + ' features remain')   
+    if verbose:
+        print('\nThere are %d columns to remove.' % (len(to_drop)))
+        print (f'After dropping {train.shape[1]}' + ' features remain')   
     return [train, test, to_drop]
+
+def features_to_drop(df, verbose = True):
+    drop_list = []
+    for col_i in df.columns:
+        if (df[col_i].nunique() in [1]) and (df[col_i].unique() == 0):
+            drop_list.append(col_i)
+    if verbose:
+        print('Total number of columns to drop:',len(drop_list))
+    return drop_list
 
 def get_nan_col(df, N):
     # Get features with minimum N percentage of null observations 
@@ -290,6 +305,9 @@ def std_norm(train, test, cat_names, func = 'std', common_scaler = True):
     
     return [train, test]
 
+def clean_inf_nan(df):
+    return df.replace([np.inf, -np.inf], np.nan)  
+
 def smart_fillna (common_df, Y, percent , fill_method_all, model_type, cv, scoring):   
     X = pd.DataFrame()
     X_test = pd.DataFrame()
@@ -393,3 +411,89 @@ def bootstrap_fun(data1, data2, num_of_samples = 500, method = 'mean'):
         for i in range(num_of_samples):
             data1_mean[i], data2_mean[i] = np.median(data1_sample[i]), np.median(data2_sample[i])   
     return data1_mean, data2_mean
+
+def plot_2d_3d(y_2d =[], y_3d = [], X_pca2d = [], X_pca3d = [],  plot_title = '', subtitle1 = '2 PCA components', subtitle2 = '3 PCA components' ):
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        specs= [
+                 [{"type": "xy"}, {"type": "scatter3d"}],
+               ],
+        subplot_titles=( subtitle1, subtitle2),
+        column_widths=[0.4, 0.6]
+    )
+    
+    if isinstance(y_2d, pd.DataFrame):
+
+        df2d = pd.concat([pd.DataFrame(X_pca2d, columns = ['comp1', 'comp2']), y_2d], axis = 1)
+        
+        df3d = pd.concat([pd.DataFrame(X_pca3d, columns = ['comp1', 'comp2', 'comp3']), y_3d], axis = 1)
+        
+    else:
+
+        df2d = pd.concat([pd.DataFrame(X_pca2d, columns = ['comp1', 'comp2']), 
+                  pd.DataFrame(y_2d, columns = ['target'])], axis = 1)
+        
+        df3d = pd.concat([pd.DataFrame(X_pca3d, columns = ['comp1', 'comp2', 'comp3']), 
+                  pd.DataFrame(y_3d, columns = ['target'])], axis = 1)
+    
+    trace2D = go.Scatter(x = df2d.comp1,
+                         y = df2d.comp2,
+                         mode = 'markers',
+                         marker = dict(size = 10, color = df2d.target)
+                          )
+
+    fig.add_trace(trace2D,
+                  row=1, col=1)
+
+    trace3D = go.Scatter3d(x = df3d.comp1,
+                           y = df3d.comp2,
+                           z = df3d.comp3,
+                           mode = 'markers',
+                           marker = dict(size = 10, color = df3d.target)
+                          )
+
+    fig.add_trace(trace3D,
+                  row=1, col=2)
+    fig.update_yaxes(automargin=True)
+
+    fig['layout']['xaxis1'].update(title = 'comp_1')
+    fig['layout']['yaxis1'].update(title= 'comp_2')
+
+    fig.update_layout(template=None,
+        showlegend=False, title = plot_title, title_x=0.5,
+                      scene = dict(
+                        xaxis_title='comp_1',
+                        yaxis_title='comp_2',
+                        zaxis_title='comp_3'),
+
+                     )
+    fig.show()
+
+def plot_3d_space(X, y, label='Classes'):   
+    colors = ['#1F77B4', '#FF7F0E']
+    markers = ['o', 's']
+    
+    fig = plt.figure(figsize=(10,8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    for l, c, m in zip(np.unique(y), colors, markers):
+        ax.scatter(X[y==l, 0], X[y==l, 1], X[y==l, 2], c=c, label=l, marker=m)
+        
+    ax.set_xlabel('Comp_1')
+    ax.set_ylabel('Comp_2')
+    ax.set_zlabel('Comp_3')
+    plt.title(label)
+    plt.legend(loc='upper right')
+    plt.show()  
+
+
+def plot_2d_space(X, y, label='Classes'):   
+    colors = ['#1F77B4', '#FF7F0E']
+    markers = ['o', 's']
+    
+    for l, c, m in zip(np.unique(y), colors, markers):
+        plt.scatter(X[y==l, 0], X[y==l, 1], c=c, label=l, marker=m)
+    plt.title(label)
+    plt.legend(loc='upper right')
+    plt.show()               
